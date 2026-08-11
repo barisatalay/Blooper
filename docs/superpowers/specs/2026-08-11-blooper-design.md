@@ -48,7 +48,7 @@ Hook, `settings.json`'a **sabit** `Application Support` yolunu yazar — app bun
 
 ### 1. Blooper.app (Swift, SPM, Xcode projesi yok)
 
-- SwiftUI `MenuBarExtra` (window style) — liste UI: başlıkta "N logged · M today", 7 günlük mini bar grafik, gün gün gruplu hata kartları (`wrong → right`, kural açıklaması, saat, tekrar sayısı `xN`).
+- SwiftUI `MenuBarExtra` (window style) — liste UI: başlıkta "N logged · M today", 7 günlük mini bar grafik, hata kartları düz liste halinde (son 30 grup, en yeni üstte; `wrong → right`, kural açıklaması, saat, tekrar sayısı `xN`). Gün-gün bölüm başlıkları v2 adayı.
 - `LSUIElement = true` (Dock'ta görünmez). Info.plist, `bundle.sh` içinde üretilir.
 - **Açılışta:** `Application Support/Blooper/` dizinini ve yoksa boş `mistakes.jsonl` + varsayılan `config.json`'ı oluşturur, script'leri senkronlar, **ondan sonra** dosya izlemeyi kurar. `DispatchSource.makeFileSystemObjectSource` fd tabanlıdır — dosya garantili var olduktan sonra açılır; `.delete`/`.rename` event'lerinde kaynak kapatılıp yeniden kurulur (izleme kopmaz).
 - Yeni satır geldiğinde UI tazelenir; bildirim **best-effort**: izin verilmemişse/başarısızsa menübar ikonundaki sayaç artışı tek başına sinyaldir. `UNUserNotificationCenter` erişimi bundle kontrolüyle sarmalanır (`swift run`/çıplak binary'de crash guard — bundle dışında notification center'a hiç dokunulmaz).
@@ -139,7 +139,7 @@ Menüden tetiklenir; `mistakes.jsonl`'dan tek tablo üretir (tarih, hata, düzel
 
 ## Dağıtım
 
-- `scripts/bundle.sh`: `swift build -c release --arch arm64 --arch x86_64` (tek komutta universal binary) → `Blooper.app` (Info.plist, ikon, script'ler `Resources/`e) → **sabit identifier'la ad-hoc codesign** (`codesign -s - --identifier com.barisatalay.blooper`) — denenecek bir hafifletme, garanti değil: ad-hoc imzada TCC kimliği build'den build'e değişen CDHash'e bağlıdır, identifier tek başına stabil kimlik kurmaz. Birincil önlem README'deki "güncellemede bildirim iznini yeniden vermek gerekebilir" notudur.
+- `scripts/bundle.sh`: `swift build -c release --arch arm64 --arch x86_64` (tek komutta universal binary) → `Blooper.app` (Info.plist, script'ler `Resources/`e; app ikonu v1'de jenerik, sonradan eklenir) → **sabit identifier'la ad-hoc codesign** (`codesign -s - --identifier com.barisatalay.blooper`) — denenecek bir hafifletme, garanti değil: ad-hoc imzada TCC kimliği build'den build'e değişen CDHash'e bağlıdır, identifier tek başına stabil kimlik kurmaz. Birincil önlem README'deki "güncellemede bildirim iznini yeniden vermek gerekebilir" notudur.
 - `scripts/release.sh`: `bundle.sh` + `hdiutil` ile `.dmg` + `gh release create`.
 - **v1 imzasız (Developer ID yok):** README'de Gatekeeper adımları **sürüme göre**: macOS 13/14 → sağ tık → Aç; macOS 15+ → Sistem Ayarları → Gizlilik ve Güvenlik → "Yine de Aç" (yalnız ilk açılışta). Alternatif tek satır: `xattr -d com.apple.quarantine /Applications/Blooper.app`. Developer ID edinilirse notarization `release.sh`'a eklenir.
 

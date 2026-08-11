@@ -12,6 +12,7 @@ struct BlooperApp: App {
         BlooperEnv.bootstrap()
         let s = MistakeStore(fileURL: BlooperEnv.mistakesFile)
         s.reload()
+        s.onNewMistakes = { fresh in Notifier.notifyIfEnabled(fresh) }
         s.startWatching()
         _store = StateObject(wrappedValue: s)
     }

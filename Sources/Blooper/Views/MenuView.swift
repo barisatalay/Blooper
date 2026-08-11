@@ -1,10 +1,21 @@
 import SwiftUI
+import ServiceManagement
 
 struct MenuView: View {
     @ObservedObject var store: MistakeStore
     let installer: HookInstaller
     @State private var hookInstalled = false
     @State private var installError: String?
+    @State private var notificationsOn = Notifier.notificationsEnabled
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private static let claudeFound: Bool = {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        return ["/usr/local/bin/claude", "/opt/homebrew/bin/claude",
+                home + "/.claude/local/claude", home + "/.local/bin/claude"]
+            .contains { fm.isExecutableFile(atPath: $0) }
+    }()
 
     private var grouped: [GroupedMistake] { MistakeLog.grouped(store.mistakes) }
     private var week: [Int] { MistakeLog.weekCounts(store.mistakes, now: Date(), calendar: .current) }
@@ -14,6 +25,10 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 12) {
             if Bundle.main.bundlePath.contains("/AppTranslocation/") {
                 Text("Move Blooper to /Applications and relaunch — some features are unreliable from this location.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if !Self.claudeFound {
+                Text("Claude Code not found — checks will not run.")
                     .font(.caption).foregroundStyle(.orange)
             }
 
@@ -38,6 +53,14 @@ struct MenuView: View {
             }
 
             Divider()
+            Toggle("Notifications", isOn: $notificationsOn)
+                .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
+            Toggle("Launch at login", isOn: $launchAtLogin)
+                .onChange(of: launchAtLogin) { _, on in
+                    // Kayıt başarısızsa toggle'ı gerçeğe geri çek
+                    do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                    catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                }
             HStack {
                 Button(hookInstalled ? "Remove hook" : "Install Claude Code hook") { toggleHook() }
                 Spacer()

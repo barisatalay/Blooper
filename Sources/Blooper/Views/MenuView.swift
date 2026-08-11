@@ -63,6 +63,7 @@ struct MenuView: View {
                 }
             HStack {
                 Button(hookInstalled ? "Remove hook" : "Install Claude Code hook") { toggleHook() }
+                Button("Export Markdown") { exportMarkdown() }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
@@ -80,6 +81,14 @@ struct MenuView: View {
             installError = nil
         } catch {
             installError = "Couldn't parse settings.json — left untouched. Fix it manually and retry."
+        }
+    }
+
+    private func exportMarkdown() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "english-mistakes.md"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? MarkdownExporter.render(store.mistakes).write(to: url, atomically: true, encoding: .utf8)
         }
     }
 }

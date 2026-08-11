@@ -1,0 +1,6 @@
+#!/bin/bash
+# Sahte claude: argv+env'i loglar, hazır cevabı basar. Gerçek API'ye asla çıkılmaz.
+{ printf 'ARGS:%s\n' "$*"; printf 'ENV_BLOOPER_CHECK:%s\n' "${BLOOPER_CHECK:-unset}"; printf 'CWD:%s\n' "$PWD"; cat >/dev/null; } >> "${STUB_LOG:?}"
+[ -n "$STUB_SLEEP" ] && sleep "$STUB_SLEEP"
+[ -n "$STUB_RESPONSE_FILE" ] && cat "$STUB_RESPONSE_FILE"
+exit "${STUB_EXIT:-0}"

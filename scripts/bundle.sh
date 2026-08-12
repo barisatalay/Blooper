@@ -11,7 +11,9 @@ swift build -c release --arch arm64 --arch x86_64
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/apple/Products/Release/Blooper "$APP/Contents/MacOS/Blooper"
-cp Resources/scripts/hook.sh Resources/scripts/checker.sh "$APP/Contents/Resources/"
+cp Resources/scripts/hook.sh Resources/scripts/checker.sh \
+   Resources/scripts/statusline-fragment.sh Resources/scripts/statusline-wrapper-template.sh \
+   "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/Resources/"*.sh
 cp Resources/AppIcon.icns Resources/MenuBarIcon.png "$APP/Contents/Resources/"
 

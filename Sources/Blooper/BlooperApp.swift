@@ -18,6 +18,15 @@ struct BlooperApp: App {
         settingsURL: FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/settings.json"))
 
+    private let statuslineInstaller = StatuslineInstaller(
+        settingsURL: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/settings.json"),
+        configURL: BlooperEnv.configFile,
+        binDir: BlooperEnv.binDir,
+        // Bundle yoksa (dev/swift run) son app açılışının senkronladığı kopya kullanılır
+        templateURL: Bundle.main.url(forResource: "statusline-wrapper-template", withExtension: "sh")
+            ?? BlooperEnv.binDir.appendingPathComponent("statusline-wrapper-template.sh"))
+
     init() {
         BlooperEnv.bootstrap()
         let s = MistakeStore(fileURL: BlooperEnv.mistakesFile)
@@ -29,7 +38,7 @@ struct BlooperApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuView(store: store, installer: installer)
+            MenuView(store: store, installer: installer, statuslineInstaller: statuslineInstaller)
         } label: {
             // Menübar sayacı: bildirim izni verilmese de birincil sinyal
             let today = MistakeLog.countToday(store.mistakes, now: Date(), calendar: .current)

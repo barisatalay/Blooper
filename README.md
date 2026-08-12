@@ -22,6 +22,23 @@ the rule, and how often you repeat it.
 3. Launch Blooper, click the menu bar icon → **Install Claude Code hook**.
 4. Write English prompts in Claude Code. Mistakes show up in the menu bar.
 
+## Statusline (optional)
+
+Show this session's recent mistakes right under the Claude Code input box:
+menu bar icon → **Install statusline**.
+
+- No statusline configured? Blooper installs its own (refreshes every 30s).
+- Already have one (plugin or custom)? Blooper wraps it: your line renders
+  first, mistakes appear under it. **Remove statusline** restores your
+  original setup exactly. If you later change your own statusline, run
+  Remove + Install again so Blooper wraps the new one.
+- Power users: add this line to the end of your own statusline script instead
+  and skip the wrapper entirely:
+  `printf '%s' "$payload" | "$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh"`
+- Notes: mistakes are session-scoped (each Claude window sees its own);
+  installing a statusline hides Claude Code's built-in shortcut hints; a
+  project-level `.claude/settings.json` statusline overrides the user-level one.
+
 ## How it works
 
 A `UserPromptSubmit` hook hands your prompt to a fully detached background

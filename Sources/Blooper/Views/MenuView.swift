@@ -4,8 +4,11 @@ import ServiceManagement
 struct MenuView: View {
     @ObservedObject var store: MistakeStore
     let installer: HookInstaller
+    let statuslineInstaller: StatuslineInstaller
     @State private var hookInstalled = false
     @State private var installError: String?
+    @State private var statuslineInstalled = false
+    @State private var statuslineInfo: String?
     @State private var notificationsOn = Notifier.notificationsEnabled
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -63,15 +66,34 @@ struct MenuView: View {
                 }
             HStack {
                 Button(hookInstalled ? "Remove hook" : "Install Claude Code hook") { toggleHook() }
+                Button(statuslineInstalled ? "Remove statusline" : "Install statusline") { toggleStatusline() }
                 Button("Export Markdown") { exportMarkdown() }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
             if let installError { Text(installError).font(.caption).foregroundStyle(.red) }
+            if let statuslineInfo { Text(statuslineInfo).font(.caption).foregroundStyle(.secondary) }
         }
         .padding(14)
         .frame(width: 440)
-        .onAppear { hookInstalled = installer.isInstalled() }
+        .onAppear {
+            hookInstalled = installer.isInstalled()
+            statuslineInstalled = statuslineInstaller.isInstalled()
+        }
+    }
+
+    private func toggleStatusline() {
+        do {
+            let msg: String?
+            if statuslineInstalled { msg = try statuslineInstaller.uninstall() }
+            else { msg = try statuslineInstaller.install() }
+            statuslineInstalled = statuslineInstaller.isInstalled()
+            statuslineInfo = msg ?? (statuslineInstalled ? "Statusline installed — visible after your next interaction." : nil)
+        } catch StatuslineError.alreadyContainsBlooper {
+            statuslineInfo = "Your statusline already includes Blooper — resolve manually first."
+        } catch {
+            statuslineInfo = "Couldn't parse settings.json — left untouched. Fix it manually and retry."
+        }
     }
 
     private func toggleHook() {

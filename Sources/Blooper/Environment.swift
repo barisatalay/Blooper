@@ -23,7 +23,8 @@ enum BlooperEnv {
     // App her açılışta script'lerin güncel kopyasını sabit yola yazar; hook app bundle'ına değil buraya bağlıdır
     static func syncScripts(from bundle: Bundle?) {
         let fm = FileManager.default
-        for name in ["hook.sh", "checker.sh"] {
+        // Şablonun da senkronlanması, templateURL fallback'inin (binDir) dev akışında ölü yol olmasını önler
+        for name in ["hook.sh", "checker.sh", "statusline-fragment.sh", "statusline-wrapper-template.sh"] {
             guard let src = bundle?.url(forResource: name, withExtension: nil) else { continue }
             let dst = binDir.appendingPathComponent(name)
             try? fm.removeItem(at: dst)

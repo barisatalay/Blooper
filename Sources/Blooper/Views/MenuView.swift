@@ -74,7 +74,9 @@ struct MenuView: View {
                         setBlooperActive(on)
                     }
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background { if blooperActive { AnimatedGlowBorder() } }
             Toggle("Notifications", isOn: $notificationsOn)
                 .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
             Toggle("Launch at login", isOn: $launchAtLogin)
@@ -128,23 +130,61 @@ struct MenuView: View {
     }
 }
 
-// Aktif-durum vurgusu: gradyan renkleri hue döngüsüyle sürekli akar, hafif glow eşlik eder
+// Aktif-durum vurgusu — üç katman:
+// 1) gradyan zemin (yavaş hue sürüklenmesi), 2) metnin alfa kanalıyla maskelenen
+// parlak süpürme bandı (asıl "shimmer"), 3) native variableColor sparkle animasyonu.
 struct ShimmerLabel: View {
     let text: String
+
+    private var content: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .symbolEffect(.variableColor.iterative.reversing)
+            Text(text).bold()
+        }
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let angle = Angle.degrees((t * 80).truncatingRemainder(dividingBy: 360))
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                Text(text).bold()
-            }
-            .foregroundStyle(
-                LinearGradient(colors: [.purple, .pink, .orange, .mint],
-                               startPoint: .leading, endPoint: .trailing)
-            )
-            .hueRotation(angle)
-            .shadow(color: .pink.opacity(0.45), radius: 6)
+            let sweep = CGFloat((t / 2.2).truncatingRemainder(dividingBy: 1))     // 2.2 sn'de bir süpürme
+            let hue = Angle.degrees((t * 24).truncatingRemainder(dividingBy: 360)) // yavaş renk kayması
+
+            content
+                .foregroundStyle(
+                    LinearGradient(colors: [.purple, .pink, .orange, .mint],
+                                   startPoint: .leading, endPoint: .trailing)
+                )
+                .hueRotation(hue)
+                .overlay(
+                    // Işık bandı: soldan sağa akar, yalnız harflerin içinde görünür (mask)
+                    GeometryReader { geo in
+                        let band = geo.size.width * 0.38
+                        LinearGradient(colors: [.clear, .white.opacity(0.95), .clear],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: band)
+                            .offset(x: -band + (geo.size.width + 2 * band) * sweep)
+                            .blendMode(.screen)
+                    }
+                    .mask(content)
+                )
+                .shadow(color: .pink.opacity(0.35), radius: 5)
+        }
+    }
+}
+
+// Dönen açısal-gradyan çerçeve + hafif zemin ışıması (aktif satırın arkası)
+struct AnimatedGlowBorder: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let angle = Angle.degrees((t * 50).truncatingRemainder(dividingBy: 360))
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(
+                    AngularGradient(colors: [.purple, .pink, .orange, .mint, .purple],
+                                    center: .center, angle: angle),
+                    lineWidth: 1.5)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.purple.opacity(0.07)))
         }
     }
 }

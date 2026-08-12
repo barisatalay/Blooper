@@ -223,6 +223,7 @@ function run(argv) {
     return hits.slice(-3).map(m =>
         E + "[31m" + m.wrong + R + " \u2192 " + E + "[32m" + m.right + R + " \u00b7 " + (m.rule || "") + R
     ).join("\n");
+}' "$FILE" "$session_id" "$now" 2>/dev/null) || exit 0
 
 [ -n "$res" ] && printf '%s\n' "$res"
 exit 0
@@ -230,7 +231,13 @@ exit 0
 
 `chmod +x Resources/scripts/statusline-fragment.sh`
 
-- [ ] **Step 2: Testleri ekle** (run.sh — setup_env kopya listesi `statusline-fragment.sh`'ı da alacak şekilde `cp` satırı güncellenir):
+- [ ] **Step 2: Testleri ekle** — önce setup_env'e kopya satırı (mevcut checker `cp`'sinin altına; `|| true` şart, Task 1 aşamasında dosya yokken suite kırılmasın):
+
+```bash
+    cp "$ROOT/Resources/scripts/statusline-fragment.sh" "$BLOOPER_SUPPORT_DIR/bin/" 2>/dev/null || true
+```
+
+Testler:
 
 ```bash
 sl_payload() { printf '{"session_id":%s,"model":{"id":"m"}}' "$1"; }
@@ -287,6 +294,13 @@ test_fragment_no_session_field_global() {
     case "$out" in *"I am agree"*) pass "fragment global fallback (no session_id)" ;; *) fail "global düşüş çalışmadı" ;; esac
 }
 
+test_fragment_closed_stdin_global() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    out=$(FRAG </dev/null)                           # payload hiç yok (kapalı stdin) → global mod
+    case "$out" in *"I am agree"*) pass "fragment global fallback (closed stdin)" ;; *) fail "kapalı-stdin düşüşü çalışmadı" ;; esac
+}
+
 test_fragment_empty_and_garbage() {
     setup_env
     out=$(sl_payload '"s1"' | FRAG); [ -z "$out" ] || { fail "boş dosyada çıktı"; return; }
@@ -299,9 +313,14 @@ test_fragment_empty_and_garbage() {
 test_fragment_ansi_reset_per_line() {
     setup_env
     write_mistake 60 "s1" "I am agree"; write_mistake 30 "s1" "teh"
-    sl_payload '"s1"' | FRAG | while IFS= read -r line; do
-        case "$line" in *$'\033[0m') : ;; *) fail "satır reset ile bitmiyor: $line"; exit 1 ;; esac
-    done || return
+    # Pipeline-subshell tuzağı: while'ı pipe'a bağlarsak fail() sayacı subshell'de kalır,
+    # suite yanlışı yeşil raporlar. Çıktı önce değişkene alınır, here-string ile döngülenir.
+    out=$(sl_payload '"s1"' | FRAG)
+    bad=0
+    while IFS= read -r line; do
+        case "$line" in *$'\033[0m') : ;; *) bad=1 ;; esac
+    done <<< "$out"
+    [ "$bad" -eq 0 ] || { fail "satır(lar) reset ile bitmiyor"; return; }
     pass "fragment lines end with ANSI reset"
 }
 
@@ -316,7 +335,7 @@ test_fragment_tail_200_limit() {
 }
 ```
 
-Çağrı listesine sekizini ekle.
+Çağrı listesine dokuzunu ekle.
 
 - [ ] **Step 3: Koş** — `tests/scripts/run.sh` → tümü pass.
 
@@ -331,7 +350,7 @@ test_fragment_tail_200_limit() {
 - Modify: `tests/scripts/run.sh`
 
 **Interfaces:**
-- Produces: placeholder'lı şablon; Task 5'te Swift `__BLOOPER_ORIGINAL__`'ı kaçışlı orijinalle değiştirir. Bash testleri aynı substitusyonu perl'le yapar (tek kaynak).
+- Produces: placeholder'lı şablon; Task 5'te Swift `__BLOOPER_ORIGINAL__`'ı kaçışlı orijinalle değiştirir. Bash testleri aynı substitusyonu satır-birleştirme yöntemiyle yapar (tek kaynak).
 
 - [ ] **Step 1: Şablonu yaz**
 
@@ -340,7 +359,8 @@ test_fragment_tail_200_limit() {
 # BLOOPER-STATUSLINE-WRAPPER v1 — kaldırmak için Blooper menüsünü kullanın.
 # Orijinal statusline BLOOPER_ORIGINAL değişkenindedir; restore kaynağı config.json'dur (bu dosya değil).
 BLOOPER_ORIGINAL='__BLOOPER_ORIGINAL__'
-FRAGMENT="$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh"
+# Test izolasyonu için env override (hook/checker'daki desen); üretimde unset → aynı yol
+FRAGMENT="${BLOOPER_SUPPORT_DIR:-$HOME/Library/Application Support/Blooper}/bin/statusline-fragment.sh"
 # TTY guard: elle çalıştıran EOF beklemesin
 [ -t 0 ] && payload="" || payload=$(cat)
 # Orijinal alt shell'de koşar (çok satır, ;, &&, # ve quoting güvenli); çıktı newline-normalize
@@ -409,7 +429,8 @@ test_wrapper_failing_original_failopen() {
 test_wrapper_group_shares_stdin_native() {
     setup_env
     # ; ile ayrılan grup stdin'i NATIVE semantikle paylaşır: ilk komut 5 bayt alır, ikincisi kalanı görür
-    w=$(make_wrapper 'head -c 5 >/dev/null; wc -c | tr -d " "')
+    # (head -c pipe'ı tamponla tümüyle çeker — bayt-hassas tüketim için dd şart)
+    w=$(make_wrapper 'dd bs=1 count=5 >/dev/null 2>&1; wc -c | tr -d " "')
     out=$(printf '{"session_id":"s1"}' | "$w")
     first=$(printf '%s\n' "$out" | head -1)
     total=$(printf '{"session_id":"s1"}' | wc -c | tr -d ' ')
@@ -418,7 +439,7 @@ test_wrapper_group_shares_stdin_native() {
 }
 ```
 
-Çağrı listesine beşini ekle. (make_wrapper'daki perl yolu birincil; fallback dal, perl `\Q` sınırına takılırsa satır-bazlı birleştirme yapar — test her iki yolda da aynı wrapper'ı üretir.)
+Çağrı listesine beşini ekle.
 
 - [ ] **Step 3: Koş** — `tests/scripts/run.sh` → tümü pass.
 
@@ -562,6 +583,27 @@ final class StatuslineInstallerTests: XCTestCase {
         try installer.install()
         try installer.uninstall()
         XCTAssertNoThrow(try installer.uninstall())
+    }
+
+    func testInstallCreatesBackup() throws {
+        try write(settings, #"{"statusLine":{"type":"command","command":"my-status"}}"#)
+        try installer.install()
+        let backup = settings.deletingLastPathComponent().appendingPathComponent("settings.json.blooper-backup")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+    }
+
+    func testMarkerVersionChangeRegeneratesWrapper() throws {
+        try write(settings, #"{"statusLine":{"type":"command","command":"my-status"}}"#)
+        try installer.install()
+        // eski sürümlü wrapper simüle et: marker satırını v0'a boz
+        let wrapper = binDir.appendingPathComponent("blooper-statusline.sh")
+        let old = try String(contentsOf: wrapper, encoding: .utf8)
+            .replacingOccurrences(of: "BLOOPER-STATUSLINE-WRAPPER v1", with: "BLOOPER-STATUSLINE-WRAPPER v0")
+        try old.write(to: wrapper, atomically: true, encoding: .utf8)
+        try installer.install()   // sürüm farkı → güncel şablonla yeniden üretim
+        let regenerated = try String(contentsOf: wrapper, encoding: .utf8)
+        XCTAssertTrue(regenerated.contains("BLOOPER-STATUSLINE-WRAPPER v1"))
+        XCTAssertTrue(regenerated.contains("my-status"), "orijinal config'ten korunarak yeniden gömülür")
     }
 
     func testUnparsableSettingsUntouched() throws {
@@ -770,7 +812,7 @@ struct StatuslineInstaller {
 }
 ```
 
-- [ ] **Step 4: PASS** — `swift test --filter StatuslineInstallerTests` → 12 test yeşil; ardından tam takım.
+- [ ] **Step 4: PASS** — `swift test --filter StatuslineInstallerTests` → 13 test yeşil; ardından tam takım.
 
 - [ ] **Step 5: Commit** — `git add -A && git commit -m "feat: add statusline installer with safe wrap and exact restore"`
 
@@ -785,7 +827,7 @@ struct StatuslineInstaller {
 - Consumes: `StatuslineInstaller` (Task 5).
 - Produces: menüde "Install statusline"/"Remove statusline" + bilgi mesajı alanı; bundle'da fragment + şablon.
 
-- [ ] **Step 1: Environment sync listesi** — `syncScripts` döngüsündeki listeyi `["hook.sh", "checker.sh", "statusline-fragment.sh"]` yap. (Şablon senkronlanmaz — wrapper üretimi şablonu doğrudan Bundle'dan okur.)
+- [ ] **Step 1: Environment sync listesi** — `syncScripts` döngüsündeki listeyi `["hook.sh", "checker.sh", "statusline-fragment.sh", "statusline-wrapper-template.sh"]` yap. Şablonun da senkronlanması, BlooperApp'teki `templateURL` fallback'inin (`binDir/statusline-wrapper-template.sh`) ölü yol olmasını önler — dev/`swift run` akışında bundle yokken bile önceki app açılışının senkronladığı şablon bulunur.
 
 - [ ] **Step 2: MenuView** — hook butonu satırının altına:
 

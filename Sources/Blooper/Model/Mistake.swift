@@ -5,8 +5,13 @@ struct Mistake: Codable, Equatable, Identifiable {
     let wrong: String
     let right: String
     let rule: String
+    let session: String?   // eski satırlarda yok — decoder tolere eder
 
     var id: String { "\(ts.timeIntervalSince1970)-\(wrong)-\(right)" }
+
+    init(ts: Date, wrong: String, right: String, rule: String, session: String? = nil) {
+        self.ts = ts; self.wrong = wrong; self.right = right; self.rule = rule; self.session = session
+    }
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()

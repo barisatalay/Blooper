@@ -30,4 +30,16 @@ final class MistakeTests: XCTestCase {
     func testParseLogEmptyContent() {
         XCTAssertEqual(Mistake.parseLog(""), [])
     }
+
+    func testParsesLineWithSession() throws {
+        let line = #"{"ts":"2026-08-12T10:00:00Z","wrong":"a","right":"b","rule":"c","session":"s-1"}"#
+        let m = try XCTUnwrap(Mistake.parse(line: line))
+        XCTAssertEqual(m.session, "s-1")
+    }
+
+    func testParsesLegacyLineWithoutSession() throws {
+        let line = #"{"ts":"2026-08-12T10:00:00Z","wrong":"a","right":"b","rule":"c"}"#
+        let m = try XCTUnwrap(Mistake.parse(line: line))
+        XCTAssertNil(m.session)
+    }
 }

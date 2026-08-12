@@ -31,7 +31,7 @@ final class StatuslineInstallerTests: XCTestCase {
         let sl = try XCTUnwrap(try statusLine())
         XCTAssertEqual(sl["type"] as? String, "command")
         XCTAssertTrue((sl["command"] as? String ?? "").contains("statusline-fragment.sh"))
-        XCTAssertEqual(sl["refreshInterval"] as? Int, 30)
+        XCTAssertEqual(sl["refreshInterval"] as? Int, 20)
         XCTAssertTrue(installer.isInstalled())
     }
 
@@ -44,6 +44,7 @@ final class StatuslineInstallerTests: XCTestCase {
         let sl = try XCTUnwrap(try statusLine())
         XCTAssertTrue((sl["command"] as? String ?? "").contains("blooper-statusline.sh"))
         XCTAssertEqual(sl["padding"] as? Int, 0, "diğer anahtarlar settings'te korunur")
+        XCTAssertEqual(sl["refreshInterval"] as? Int, 5, "kullanıcının kendi aralığı varsa dokunulmaz")
         let wrapper = try String(contentsOf: binDir.appendingPathComponent("blooper-statusline.sh"), encoding: .utf8)
         XCTAssertTrue(wrapper.contains("my-status --flag"))
         XCTAssertFalse(wrapper.contains("__BLOOPER_ORIGINAL__"))
@@ -51,6 +52,7 @@ final class StatuslineInstallerTests: XCTestCase {
         XCTAssertEqual(cfg["model"] as? String, "claude-haiku-4-5")
         let saved = try XCTUnwrap(cfg["original_statusline"] as? [String: Any])
         XCTAssertEqual(saved["customKey"] as? String, "x")
+        XCTAssertEqual(saved["refreshInterval"] as? Int, 5, "config'teki kayıt kullanıcının objesinin birebir aynısıdır")
         XCTAssertNil(try installer.uninstall())
         let restored = try XCTUnwrap(try statusLine())
         XCTAssertEqual(restored["command"] as? String, "my-status --flag")
@@ -58,6 +60,21 @@ final class StatuslineInstallerTests: XCTestCase {
         XCTAssertEqual(restored["customKey"] as? String, "x")
         XCTAssertNil((try readJSON(config))["original_statusline"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: binDir.appendingPathComponent("blooper-statusline.sh").path))
+    }
+
+    func testWrapAddsRefreshIntervalWhenUserHasNone() throws {
+        let original: [String: Any] = ["type": "command", "command": "my-status --flag", "padding": 0]
+        try write(settings, String(data: JSONSerialization.data(withJSONObject: ["statusLine": original]), encoding: .utf8)!)
+        XCTAssertNil(try installer.install())
+        let sl = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(sl["refreshInterval"] as? Int, 20, "aralığı olmayan yabancı statusline'a tazelik için 20 eklenir")
+        // config'teki orijinal kayıt bizim eklediğimiz anahtarı İÇERMEZ
+        let saved = try XCTUnwrap((try readJSON(config))["original_statusline"] as? [String: Any])
+        XCTAssertNil(saved["refreshInterval"], "eklenen aralık orijinal kayda sızmaz")
+        XCTAssertNil(try installer.uninstall())
+        let restored = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(restored["command"] as? String, "my-status --flag")
+        XCTAssertNil(restored["refreshInterval"], "restore edilen obje kullanıcının orijinaliyle birebir aynıdır")
     }
 
     func testSingleQuoteOriginalEscapedCorrectly() throws {

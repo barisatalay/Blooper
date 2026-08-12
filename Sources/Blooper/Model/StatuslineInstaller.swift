@@ -13,6 +13,7 @@ struct StatuslineInstaller {
     static let fragmentCommand = "\"$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh\""
     static let wrapperCommand  = "\"$HOME/Library/Application Support/Blooper/bin/blooper-statusline.sh\""
     private static let marker = "BLOOPER-STATUSLINE-WRAPPER"
+    static let defaultRefreshInterval = 20
 
     private var wrapperFile: URL { binDir.appendingPathComponent("blooper-statusline.sh") }
 
@@ -41,7 +42,7 @@ struct StatuslineInstaller {
             try regenerateWrapperIfVersionChanged()
             return nil
         case .none:
-            root["statusLine"] = ["type": "command", "command": Self.fragmentCommand, "refreshInterval": 30]
+            root["statusLine"] = ["type": "command", "command": Self.fragmentCommand, "refreshInterval": Self.defaultRefreshInterval]
             try backupAndWrite(root)
             return nil
         case .foreign:
@@ -52,6 +53,11 @@ struct StatuslineInstaller {
             try generateWrapper(original: cmd)
             var sl = original
             sl["command"] = Self.wrapperCommand
+            if sl["refreshInterval"] == nil {
+                // Kullanıcının kendi aralığı yoksa tazelik için ekle; varsa asla dokunma.
+                // Not: config'e kaydedilen orijinal obje bu eklemeden ÖNCE yazıldı — restore birebir kalır.
+                sl["refreshInterval"] = Self.defaultRefreshInterval
+            }
             root["statusLine"] = sl                      // diğer anahtarlar settings'te korunur
             try backupAndWrite(root)
             return nil

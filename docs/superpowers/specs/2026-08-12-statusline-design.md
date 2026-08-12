@@ -22,7 +22,7 @@ Claude Code input alanının altında (statusline) o oturumda yakalanan son İng
 - Pencere: son **10 dakika**; üst sınır: **3 satır**; format: `wrong → right · rule` (wrong kırmızı, right yeşil; **her satır `\033[0m` reset ile biter** — statusline satırın sağını sistem bildirimleriyle paylaşır, renk taşmamalı).
 - Hata yoksa fragment **hiçbir şey basmaz** (boş satır bile değil).
 - Menübar UI'ı değişmez (global kalır).
-- **Tazelik:** fragment-only kurulumda `statusLine`'a `"refreshInterval": 30` (birim saniyedir — resmi doc: "re-runs your command every N seconds", min 1) eklenir — hata, assistant cevabından saniyeler sonra geldiği için timer olmadan bir tur gecikmeli görünürdü. **Wrapper kurulumunda kullanıcının mevcut objesi aynen korunur, `refreshInterval` eklenmez/değiştirilmez** (kullanıcının kadansına dokunmayız); bu durumda "hata bir sonraki etkileşimde görünür / süresi dolan satır yeni event'e dek kalır" davranışı Bilinen Sınırlamalar'dadır.
+- **Tazelik:** fragment-only kurulumda `statusLine`'a `"refreshInterval": 20` (birim saniyedir — resmi doc: "re-runs your command every N seconds", min 1) eklenir — hata, assistant cevabından saniyeler sonra geldiği için timer olmadan bir tur gecikmeli görünürdü. **Wrapper kurulumunda:** kullanıcının objesinde `refreshInterval` **yoksa** settings'e yazılan (wrapper'lı) objeye `20` eklenir; kullanıcının **kendi değeri varsa asla dokunulmaz** (kullanıcının kadansı korunur). `config.json`'daki `original_statusline` kaydı her durumda kullanıcının objesinin **birebir aynısıdır** — bizim eklediğimiz `20` oraya sızmaz, uninstall restore'u orijinali aynen geri getirir.
 
 ## Veri değişikliği: JSONL şemasına `session`
 
@@ -74,10 +74,10 @@ exit 0
 
 - **"Bizim" sınıflandırması (kritik):** komut string'i, bizim ürettiğimiz komuta (fragment veya wrapper çağrısı) **trim sonrası birebir EŞİTSE** bizimdir. Yolu *içeren ama eşit olmayan* komut (kullanıcı fragment'ı kendi pipeline'ına gömmüş olabilir) **yabancıdır** — substring eşleşmesi KULLANILMAZ; aksi halde Remove, kullanıcının kendi zincirini siler/ezerdi.
 - **Kur:**
-  - `statusLine` yoksa → `{"type":"command","command":"\"$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh\"","refreshInterval":30}` (boşluklu yol çift-tırnaklı `$HOME` — hook komutuyla aynı desen).
+  - `statusLine` yoksa → `{"type":"command","command":"\"$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh\"","refreshInterval":20}` (boşluklu yol çift-tırnaklı `$HOME` — hook komutuyla aynı desen).
   - Komut bizimse (birebir eşit) → wrapper durumunda marker sürümü aynıysa no-op, farklıysa wrapper yeniden üretilir; fragment durumunda no-op (fragment'ta sürüm kavramı yok).
   - **Çift-sarma koruması (best-effort dosya-içi tarama):** komut string'inden hedef script dosyası çıkarılmaya çalışılır — baştaki interpreter token'ları (`bash`/`sh`/`zsh`) soyulur, tırnaklar çözülür, `$HOME`/`~` genişletilir; kalan ilk argüman mevcut bir dosyaysa okunup içinde `BLOOPER-STATUSLINE-WRAPPER` aranır. Bulunursa kurulum reddedilir + "statusline zaten Blooper içeriyor; önce elle çözün" hatası. Dosya çıkarılamıyorsa (ör. `bash -c '<inline>'`) tarama atlanır — birincil koruma yukarıdaki tam-eşleşme sınıflandırmasıdır, bu tarama ek katmandır.
-  - Yabancıysa → orijinal `statusLine` **objesi bütün olarak** `config.json`'a `original_statusline` anahtarıyla kaydedilir + wrapper üretilir + `statusLine.command` wrapper yoluna çevrilir (objenin diğer anahtarları settings'te aynen korunur).
+  - Yabancıysa → orijinal `statusLine` **objesi bütün olarak** `config.json`'a `original_statusline` anahtarıyla kaydedilir + wrapper üretilir + `statusLine.command` wrapper yoluna çevrilir (objenin diğer anahtarları settings'te aynen korunur). Objede `refreshInterval` yoksa settings'teki wrapper'lı objeye `20` eklenir (config'teki orijinal kayda değil).
 - **Kaldır:**
   - Komut bizim fragment komutuna eşitse → `statusLine` anahtarı silinir (kurulum öncesi "yok" durumu).
   - Komut bizim wrapper komutuna eşitse → `original_statusline` objesi settings'e geri yazılır, config'ten silinir, wrapper dosyası silinir. **`original_statusline` config'te yoksa/bozuksa (elle silinmiş olabilir):** `statusLine` anahtarı silinir (fragment-dalı davranışına düşülür) + wrapper dosyası silinir + kullanıcıya "orijinal statusline kaydı bulunamadı; gerekirse `settings.json.blooper-backup`'tan geri alabilirsin" mesajı gösterilir.
@@ -92,7 +92,7 @@ MenuView'a hook toggle'ının yanına: **"Install statusline" / "Remove statusli
 ## Bilinen sınırlamalar (bilinçli kabuller)
 
 - **Bayat-orijinal:** wrapper kuruluyken kullanıcı statusline'ını değiştirirse settings hâlâ wrapper'ı gösterir. README: "statusline değiştirdiysen Remove + Install".
-- **Wrapper kurulumunda tazelik:** `refreshInterval` eklenmediği için hata bir sonraki event'te görünür; süresi dolan satır yeni event'e dek kalır.
+- **Wrapper kurulumunda tazelik (kısmi):** kullanıcının objesinde `refreshInterval` yoksa `20` eklenir ve hatalar timer'la görünür hale gelir; kullanıcının **kendi** `refreshInterval` değeri varsa ona dokunulmaz — değer büyükse hata o kadansta (en geç bir sonraki event'te) görünür.
 - Fragment yalnız son 200 JSONL satırını tarar (çok yoğun kullanımda daha eski ama taze kayıt teorik olarak atlanabilir).
 - Eski (session'sız) satırlar statusline'da görünmez.
 - 10 dk / 3 satır sabittir (config'e bağlanmaz — YAGNI).

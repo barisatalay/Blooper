@@ -13,7 +13,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/apple/Products/Release/Blooper "$APP/Contents/MacOS/Blooper"
 cp Resources/scripts/hook.sh Resources/scripts/checker.sh "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/Resources/"*.sh
-cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp Resources/AppIcon.icns Resources/MenuBarIcon.png "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

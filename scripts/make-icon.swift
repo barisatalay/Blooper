@@ -79,4 +79,48 @@ for base in [16, 32, 128, 256, 512] {
     savePNG(img, px: base, name: "icon_\(base)x\(base).png")
     savePNG(img, px: base * 2, name: "icon_\(base)x\(base)@2x.png")
 }
+
+// Menübar template ikonu: tek renk siluet (balon + delik olarak kıvrım).
+// Sistem, template'i açık/koyu temaya göre kendisi boyar.
+func drawMenuBar(px: CGFloat) -> NSImage {
+    let img = NSImage(size: NSSize(width: px, height: px))
+    img.lockFocus()
+    let s = px / 18.0
+
+    let bubble = NSBezierPath(roundedRect: NSRect(x: 1 * s, y: 5 * s, width: 16 * s, height: 12 * s),
+                              xRadius: 4 * s, yRadius: 4 * s)
+    let tail = NSBezierPath()
+    tail.move(to: NSPoint(x: 4.5 * s, y: 6 * s))
+    tail.line(to: NSPoint(x: 3 * s, y: 1.5 * s))
+    tail.line(to: NSPoint(x: 8.5 * s, y: 5.5 * s))
+    tail.close()
+    NSColor.black.setFill()
+    bubble.fill()
+    tail.fill()
+
+    // Kıvrım balondan "delinir" (destinationOut) — template'te delik şeffaf kalır
+    NSGraphicsContext.current?.compositingOperation = .destinationOut
+    let squiggle = NSBezierPath()
+    squiggle.lineWidth = 1.9 * s
+    squiggle.lineCapStyle = .round
+    squiggle.lineJoinStyle = .round
+    let y0: CGFloat = 9 * s
+    let amp: CGFloat = 1.4 * s
+    squiggle.move(to: NSPoint(x: 4 * s, y: y0))
+    var up = true
+    var x: CGFloat = 6 * s
+    while x <= 14 * s {
+        squiggle.line(to: NSPoint(x: x, y: up ? y0 + amp : y0 - amp))
+        up.toggle()
+        x += 2.5 * s
+    }
+    NSColor.black.setStroke()
+    squiggle.stroke()
+
+    img.unlockFocus()
+    return img
+}
+
+// Tek dosya, 36px (retina); app 18pt boyutuyla yükler
+savePNG(drawMenuBar(px: 36), px: 36, name: "MenuBarIcon.png")
 print("OK: \(outDir)")

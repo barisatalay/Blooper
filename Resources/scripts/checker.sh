@@ -5,6 +5,7 @@ export BLOOPER_CHECK=1   # claude'dan ÖNCE: iç oturumun hook'u zinciri ilk ad�
 SUPPORT_DIR="${BLOOPER_SUPPORT_DIR:-$HOME/Library/Application Support/Blooper}"
 LOG="$SUPPORT_DIR/last-error.log"
 tmpfile="${1:-}"
+session="${2:-}"
 outfile=""
 cleanup() { rm -f "$tmpfile" "$outfile"; }
 trap cleanup EXIT
@@ -76,8 +77,13 @@ osascript -l JavaScript -e '
 function run(argv) {
     const arr = JSON.parse(argv[0]);
     const ts = argv[1];
-    return arr.map(m => JSON.stringify({ts: ts, wrong: m.wrong, right: m.right, rule: m.rule})).join("\n");
-}' "$mistakes" "$ts" 2>>"$LOG" | while IFS= read -r line; do
+    const session = argv[2];
+    return arr.map(m => {
+        const o = {ts: ts, wrong: m.wrong, right: m.right, rule: m.rule};
+        if (session) o.session = session;
+        return JSON.stringify(o);
+    }).join("\n");
+}' "$mistakes" "$ts" "$session" 2>>"$LOG" | while IFS= read -r line; do
     # satır başına tek printf = tek write; eşzamanlı checker'larda interleave olmaz
     [ -n "$line" ] && printf '%s\n' "$line" >> "$SUPPORT_DIR/mistakes.jsonl"
 done

@@ -93,9 +93,9 @@ EOF
     export STUB_RESPONSE_FILE="$WORK/response.json"
 }
 
-run_checker() { # $1 = prompt metni
+run_checker() { # $1 = prompt metni, $2 = session (opsiyonel)
     tf=$(mktemp "$WORK/prompt.XXXXXX"); printf '%s' "$1" > "$tf"
-    "$BLOOPER_SUPPORT_DIR/bin/checker.sh" "$tf"
+    "$BLOOPER_SUPPORT_DIR/bin/checker.sh" "$tf" "${2:-}"
 }
 
 test_checker_happy_path() {
@@ -184,6 +184,44 @@ test_checker_concurrent_runs() {
     pass "checker concurrent runs append 2 valid lines"
 }
 
+test_checker_session_in_jsonl() {
+    setup_env; checker_fixture_ok
+    run_checker "I am agree with you post here" "sess-abc"
+    line=$(tail -1 "$BLOOPER_SUPPORT_DIR/mistakes.jsonl")
+    sess=$(printf '%s' "$line" | plutil -extract session raw -o - - 2>/dev/null) || sess=""
+    [ "$sess" = "sess-abc" ] || { fail "session yazılmadı: $line"; return; }
+    pass "checker writes session field"
+}
+
+test_checker_no_session_no_field() {
+    setup_env; checker_fixture_ok
+    run_checker "I am agree with you post here" ""
+    line=$(tail -1 "$BLOOPER_SUPPORT_DIR/mistakes.jsonl")
+    printf '%s' "$line" | plutil -extract session raw -o - - >/dev/null 2>&1 && { fail "boş session'da alan yazıldı"; return; }
+    printf '%s' "$line" | plutil -extract wrong raw -o - - >/dev/null 2>&1 || { fail "satır geçersiz"; return; }
+    pass "checker omits empty session"
+}
+
+test_hook_passes_session_to_checker() {
+    setup_env
+    printf '#!/bin/bash\nprintf "ARG2:%%s\\n" "$2" >> "%s"\n' "$STUB_LOG" > "$BLOOPER_SUPPORT_DIR/bin/checker.sh"
+    chmod +x "$BLOOPER_SUPPORT_DIR/bin/checker.sh"
+    printf '{"session_id":"sess-xyz","prompt":"I am agree with you"}' | "$BLOOPER_SUPPORT_DIR/bin/hook.sh"
+    sleep 1
+    grep -q 'ARG2:sess-xyz' "$STUB_LOG" || { fail "session hook'tan geçmedi"; return; }
+    pass "hook passes session_id"
+}
+
+test_hook_missing_session_still_checks() {
+    setup_env
+    printf '#!/bin/bash\nprintf "ARG2:[%%s]\\n" "$2" >> "%s"\n' "$STUB_LOG" > "$BLOOPER_SUPPORT_DIR/bin/checker.sh"
+    chmod +x "$BLOOPER_SUPPORT_DIR/bin/checker.sh"
+    printf '{"prompt":"I am agree with you here"}' | "$BLOOPER_SUPPORT_DIR/bin/hook.sh"
+    sleep 1
+    grep -q 'ARG2:\[\]' "$STUB_LOG" || { fail "session'sız payload'da checker koşmadı/arg bozuk"; return; }
+    pass "hook tolerates missing session_id"
+}
+
 test_hook_recursion_guard
 test_hook_large_prompt
 test_hook_returns_fast_with_slow_checker
@@ -199,6 +237,10 @@ test_checker_watchdog_kills_stuck_claude
 test_checker_stub_env_isolation
 test_checker_config_model_override
 test_checker_concurrent_runs
+test_checker_session_in_jsonl
+test_checker_no_session_no_field
+test_hook_passes_session_to_checker
+test_hook_missing_session_still_checks
 
 printf '\n%d failure(s)\n' "$FAILS"
 exit "$FAILS"

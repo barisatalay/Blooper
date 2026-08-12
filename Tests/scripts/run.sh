@@ -317,6 +317,69 @@ test_fragment_tail_200_limit() {
     pass "fragment scans only last 200 lines (documented limit)"
 }
 
+make_wrapper() { # $1 = orijinal komut; üretilen wrapper yolunu basar
+    # Substitüsyon satır-birleştirmeyle yapılır (sed/perl replacement'ta özel karakter tuzağı yok):
+    # placeholder satırı atılır, yerine kaçışlı orijinali taşıyan atama satırı yazılır.
+    esc=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
+    t="$ROOT/Resources/scripts/statusline-wrapper-template.sh"
+    w="$BLOOPER_SUPPORT_DIR/bin/blooper-statusline.sh"
+    n=$(grep -n '__BLOOPER_ORIGINAL__' "$t" | cut -d: -f1)
+    head -n $((n-1)) "$t" > "$w"
+    { printf "BLOOPER_ORIGINAL='"; printf '%s' "$esc"; printf "'\n"; } >> "$w"
+    tail -n +$((n+1)) "$t" >> "$w"
+    chmod +x "$w"; printf '%s' "$w"
+}
+
+test_wrapper_original_then_fragment() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    w=$(make_wrapper 'printf "ORIGINAL-LINE\n"')
+    out=$(sl_payload '"s1"' | "$w")
+    first=$(printf '%s\n' "$out" | head -1)
+    [ "$first" = "ORIGINAL-LINE" ] || { fail "orijinal önce değil: $first"; return; }
+    case "$out" in *"I am agree"*) pass "wrapper: original then fragment" ;; *) fail "fragment eklenmedi" ;; esac
+}
+
+test_wrapper_no_trailing_newline_original() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    w=$(make_wrapper 'printf "NO-NEWLINE"')
+    out=$(sl_payload '"s1"' | "$w")
+    first=$(printf '%s\n' "$out" | head -1)
+    [ "$first" = "NO-NEWLINE" ] || { fail "satır yapıştı: $first"; return; }
+    pass "wrapper normalizes missing newline"
+}
+
+test_wrapper_multiline_and_quote_original() {
+    setup_env
+    w=$(make_wrapper 'echo "it'"'"'s line1"
+echo line2')
+    out=$(printf '{"session_id":"s1"}' | "$w"); rc=$?
+    [ "$rc" -eq 0 ] || { fail "çok satırlı orijinal rc=$rc"; return; }
+    case "$out" in *"it's line1"*line2*) pass "wrapper survives multiline+quote original" ;; *) fail "çıktı: $out" ;; esac
+}
+
+test_wrapper_failing_original_failopen() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    w=$(make_wrapper 'exit 7')
+    out=$(sl_payload '"s1"' | "$w"); rc=$?
+    [ "$rc" -eq 0 ] || { fail "wrapper rc=$rc"; return; }
+    case "$out" in *"I am agree"*) pass "wrapper fail-open on broken original" ;; *) fail "fragment kayıp"; esac
+}
+
+test_wrapper_group_shares_stdin_native() {
+    setup_env
+    # ; ile ayrılan grup stdin'i NATIVE semantikle paylaşır: ilk komut 5 bayt alır, ikincisi kalanı görür
+    # (head -c pipe'ı tamponla tümüyle çeker — bayt-hassas tüketim için dd şart)
+    w=$(make_wrapper 'dd bs=1 count=5 >/dev/null 2>&1; wc -c | tr -d " "')
+    out=$(printf '{"session_id":"s1"}' | "$w")
+    first=$(printf '%s\n' "$out" | head -1)
+    total=$(printf '{"session_id":"s1"}' | wc -c | tr -d ' ')
+    [ "$first" = "$((total - 5))" ] || { fail "grup stdin paylaşımı beklenen değil: $first"; return; }
+    pass "wrapper group shares payload pipe natively"
+}
+
 test_hook_recursion_guard
 test_hook_large_prompt
 test_hook_returns_fast_with_slow_checker
@@ -345,6 +408,11 @@ test_fragment_closed_stdin_global
 test_fragment_empty_and_garbage
 test_fragment_ansi_reset_per_line
 test_fragment_tail_200_limit
+test_wrapper_original_then_fragment
+test_wrapper_no_trailing_newline_original
+test_wrapper_multiline_and_quote_original
+test_wrapper_failing_original_failopen
+test_wrapper_group_shares_stdin_native
 
 printf '\n%d failure(s)\n' "$FAILS"
 exit "$FAILS"

@@ -19,19 +19,19 @@ the rule, and how often you repeat it.
    - **macOS 15+:** open once, then System Settings → Privacy & Security → **Open Anyway** (needed only the first time).
    - **macOS 14:** right-click Blooper.app → **Open**.
    - Alternative: `xattr -d com.apple.quarantine /Applications/Blooper.app`
-3. Launch Blooper, click the menu bar icon → **Install Claude Code hook**.
+3. Launch Blooper, click the menu bar icon → turn on **Blooper active** (installs the hook and the statusline together).
 4. Write English prompts in Claude Code. Mistakes show up in the menu bar.
 
 ## Statusline (optional)
 
 Show this session's recent mistakes right under the Claude Code input box:
-menu bar icon → **Install statusline**.
+the **Blooper active** toggle manages this together with the hook.
 
 - No statusline configured? Blooper installs its own (refreshes every 30s).
 - Already have one (plugin or custom)? Blooper wraps it: your line renders
-  first, mistakes appear under it. **Remove statusline** restores your
-  original setup exactly. If you later change your own statusline, run
-  Remove + Install again so Blooper wraps the new one.
+  first, mistakes appear under it. Turning Blooper off restores your
+  original setup exactly. If you later change your own statusline, toggle
+  Blooper off and on again so it wraps the new one.
 - Power users: add this line to the end of your own statusline script instead
   and skip the wrapper entirely:
   `printf '%s' "$payload" | "$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh"`
@@ -59,7 +59,7 @@ the pipeline exits silently.
 
 ## Uninstall
 
-1. Menu bar icon → **Remove hook** (this edits `~/.claude/settings.json`; a
+1. Menu bar icon → turn off **Blooper active** (this edits `~/.claude/settings.json`; a
    backup is kept as `settings.json.blooper-backup`).
 2. Delete `/Applications/Blooper.app` and `~/Library/Application Support/Blooper`.
 

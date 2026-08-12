@@ -5,10 +5,8 @@ struct MenuView: View {
     @ObservedObject var store: MistakeStore
     let installer: HookInstaller
     let statuslineInstaller: StatuslineInstaller
-    @State private var hookInstalled = false
-    @State private var installError: String?
-    @State private var statuslineInstalled = false
-    @State private var statuslineInfo: String?
+    @State private var blooperActive = false
+    @State private var statusInfo: String?
     @State private var notificationsOn = Notifier.notificationsEnabled
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -47,15 +45,25 @@ struct MenuView: View {
                 Text("No mistakes yet — start writing English prompts in Claude Code.")
                     .font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
             } else {
+                // MenuBarExtra penceresi ScrollView'un ideal yüksekliğini sıfıra yakın seçip
+                // listeyi eziyor — içerik sayısına göre açık yükseklik verilir (üst sınırlı)
+                let listHeight = min(CGFloat(grouped.prefix(30).count) * 84 + 8, 380)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(grouped.prefix(30)) { g in MistakeCard(mistake: g) }
                     }
                 }
-                .frame(maxHeight: 380)
+                .frame(height: listHeight)
             }
 
             Divider()
+            // Tek anahtar hem hook'u hem statusline'ı yönetir
+            Toggle("Blooper active", isOn: $blooperActive)
+                .onChange(of: blooperActive) { _, on in
+                    // Başarısızlıkta programatik geri-çekme onChange'i yeniden tetikler — döngüyü kes
+                    guard on != installer.isInstalled() else { return }
+                    setBlooperActive(on)
+                }
             Toggle("Notifications", isOn: $notificationsOn)
                 .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
             Toggle("Launch at login", isOn: $launchAtLogin)
@@ -65,45 +73,39 @@ struct MenuView: View {
                     catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
                 }
             HStack {
-                Button(hookInstalled ? "Remove hook" : "Install Claude Code hook") { toggleHook() }
-                Button(statuslineInstalled ? "Remove statusline" : "Install statusline") { toggleStatusline() }
                 Button("Export Markdown") { exportMarkdown() }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
-            if let installError { Text(installError).font(.caption).foregroundStyle(.red) }
-            if let statuslineInfo { Text(statuslineInfo).font(.caption).foregroundStyle(.secondary) }
+            if let statusInfo { Text(statusInfo).font(.caption).foregroundStyle(.secondary) }
         }
         .padding(14)
         .frame(width: 440)
-        .onAppear {
-            hookInstalled = installer.isInstalled()
-            statuslineInstalled = statuslineInstaller.isInstalled()
-        }
+        .onAppear { blooperActive = installer.isInstalled() }
     }
 
-    private func toggleStatusline() {
+    private func setBlooperActive(_ on: Bool) {
+        var infos: [String] = []
         do {
-            let msg: String?
-            if statuslineInstalled { msg = try statuslineInstaller.uninstall() }
-            else { msg = try statuslineInstaller.install() }
-            statuslineInstalled = statuslineInstaller.isInstalled()
-            statuslineInfo = msg ?? (statuslineInstalled ? "Statusline installed — visible after your next interaction." : nil)
-        } catch StatuslineError.alreadyContainsBlooper {
-            statuslineInfo = "Your statusline already includes Blooper — resolve manually first."
+            if on {
+                try installer.install()
+                do {
+                    if let m = try statuslineInstaller.install() { infos.append(m) }
+                } catch StatuslineError.alreadyContainsBlooper {
+                    // Statusline zaten Blooper içeriyor — hook kurulumu yine geçerli
+                    infos.append("Statusline already includes Blooper — left as is.")
+                }
+            } else {
+                try installer.uninstall()
+                if let m = try statuslineInstaller.uninstall() { infos.append(m) }
+            }
+            statusInfo = infos.first ?? (on
+                ? "Blooper active — mistakes appear after your next prompts."
+                : "Blooper inactive — hook and statusline removed.")
         } catch {
-            statuslineInfo = "Couldn't parse settings.json — left untouched. Fix it manually and retry."
+            statusInfo = "Couldn't parse settings.json — left untouched. Fix it manually and retry."
         }
-    }
-
-    private func toggleHook() {
-        do {
-            if hookInstalled { try installer.uninstall() } else { try installer.install() }
-            hookInstalled = installer.isInstalled()
-            installError = nil
-        } catch {
-            installError = "Couldn't parse settings.json — left untouched. Fix it manually and retry."
-        }
+        blooperActive = installer.isInstalled()
     }
 
     private func exportMarkdown() {

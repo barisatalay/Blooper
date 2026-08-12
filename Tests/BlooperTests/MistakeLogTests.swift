@@ -33,6 +33,18 @@ final class MistakeLogTests: XCTestCase {
         XCTAssertEqual(MistakeLog.countToday(list, now: now, calendar: cal), 1)
     }
 
+    func testGroupedOrderIsStableForEqualTimestamps() {
+        // Aynı ts'li gruplar (tek kontrolün çıktısı) her çağrıda aynı sırada dönmeli:
+        // dosyadaki son görülme sırası, en yeni üstte
+        let list = [m("2026-08-12T10:00:00Z", "a1", "b1"), m("2026-08-12T10:00:00Z", "a2", "b2"),
+                    m("2026-08-12T10:00:00Z", "a3", "b3"), m("2026-08-12T10:00:00Z", "a4", "b4")]
+        let first = MistakeLog.grouped(list).map(\.wrong)
+        XCTAssertEqual(first, ["a4", "a3", "a2", "a1"])
+        for _ in 0..<20 {
+            XCTAssertEqual(MistakeLog.grouped(list).map(\.wrong), first, "sıra çağrılar arası oynamamalı")
+        }
+    }
+
     func testWeekCountsSevenBucketsOldestFirst() {
         let now = date("2026-08-11T18:00:00Z")
         let list = [m("2026-08-11T01:00:00Z"), m("2026-08-11T02:00:00Z"), m("2026-08-05T12:00:00Z"), m("2026-08-01T12:00:00Z")]

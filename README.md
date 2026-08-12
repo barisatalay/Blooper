@@ -31,7 +31,9 @@ Corrections show up right where you work — under the Claude Code input box, ne
 
 <img src="docs/assets/statusline.png" width="100%" alt="Corrections rendered under the Claude Code input box, below the user's existing statusline">
 
-<!-- TODO: docs/assets/demo.gif — type a faulty prompt → notification → popover -->
+**See it in action** — a faulty prompt, caught and explained without touching your flow:
+
+<img src="docs/assets/demo.gif" width="100%" alt="Demo: a prompt with English mistakes is sent to Claude Code, corrections appear in the statusline and the menu bar popover">
 
 ## Quick Start
 

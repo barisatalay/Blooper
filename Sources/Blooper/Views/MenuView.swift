@@ -57,13 +57,24 @@ struct MenuView: View {
             }
 
             Divider()
-            // Tek anahtar hem hook'u hem statusline'ı yönetir
-            Toggle("Blooper active", isOn: $blooperActive)
-                .onChange(of: blooperActive) { _, on in
-                    // Başarısızlıkta programatik geri-çekme onChange'i yeniden tetikler — döngüyü kes
-                    guard on != installer.isInstalled() else { return }
-                    setBlooperActive(on)
+            // Tek anahtar hem hook'u hem statusline'ı yönetir; aktifken akan-gradyan vurgusu
+            HStack {
+                if blooperActive {
+                    ShimmerLabel(text: "Blooper active")
+                } else {
+                    Text("Blooper active").foregroundStyle(.secondary)
                 }
+                Spacer()
+                Toggle("", isOn: $blooperActive)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .onChange(of: blooperActive) { _, on in
+                        // Başarısızlıkta programatik geri-çekme onChange'i yeniden tetikler — döngüyü kes
+                        guard on != installer.isInstalled() else { return }
+                        setBlooperActive(on)
+                    }
+            }
+            .padding(.vertical, 2)
             Toggle("Notifications", isOn: $notificationsOn)
                 .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
             Toggle("Launch at login", isOn: $launchAtLogin)
@@ -113,6 +124,27 @@ struct MenuView: View {
         panel.nameFieldStringValue = "english-mistakes.md"
         if panel.runModal() == .OK, let url = panel.url {
             try? MarkdownExporter.render(store.mistakes).write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
+// Aktif-durum vurgusu: gradyan renkleri hue döngüsüyle sürekli akar, hafif glow eşlik eder
+struct ShimmerLabel: View {
+    let text: String
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let angle = Angle.degrees((t * 80).truncatingRemainder(dividingBy: 360))
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                Text(text).bold()
+            }
+            .foregroundStyle(
+                LinearGradient(colors: [.purple, .pink, .orange, .mint],
+                               startPoint: .leading, endPoint: .trailing)
+            )
+            .hueRotation(angle)
+            .shadow(color: .pink.opacity(0.45), radius: 6)
         }
     }
 }

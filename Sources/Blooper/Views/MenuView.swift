@@ -77,14 +77,29 @@ struct MenuView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background { if blooperActive { AnimatedGlowBorder() } }
-            Toggle("Notifications", isOn: $notificationsOn)
-                .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
-            Toggle("Launch at login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, on in
-                    // Kayıt başarısızsa toggle'ı gerçeğe geri çek
-                    do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
-                    catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
-                }
+            // Standart switch'ler — animasyon yok; yerleşim Blooper satırıyla aynı (etiket solda, switch sağda)
+            HStack {
+                Text("Notifications")
+                Spacer()
+                Toggle("", isOn: $notificationsOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .onChange(of: notificationsOn) { _, on in Notifier.setNotificationsEnabled(on) }
+            }
+            .padding(.horizontal, 10)
+            HStack {
+                Text("Launch at login")
+                Spacer()
+                Toggle("", isOn: $launchAtLogin)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .onChange(of: launchAtLogin) { _, on in
+                        // Kayıt başarısızsa toggle'ı gerçeğe geri çek
+                        do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                        catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                    }
+            }
+            .padding(.horizontal, 10)
             HStack {
                 Button("Export Markdown") { exportMarkdown() }
                 Spacer()

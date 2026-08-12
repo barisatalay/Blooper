@@ -1,7 +1,7 @@
 # Blooper Statusline Entegrasyonu — Design Spec (v0.2.0)
 
 **Tarih:** 2026-08-12
-**Durum:** Adversarial review turu 1 işlendi — tur 2 bekliyor
+**Durum:** Adversarial review tamamlandı (2 tur + nokta-kontrol) — kullanıcı onayı bekliyor
 **Temel:** `2026-08-11-blooper-design.md` üzerine eklemedir; oradaki tüm ilkeler (fail-open, macOS-yerleşik araçlar, jq/GNU yasak, izolasyon) aynen geçerli.
 
 ## Ne
@@ -22,7 +22,7 @@ Claude Code input alanının altında (statusline) o oturumda yakalanan son İng
 - Pencere: son **10 dakika**; üst sınır: **3 satır**; format: `wrong → right · rule` (wrong kırmızı, right yeşil; **her satır `\033[0m` reset ile biter** — statusline satırın sağını sistem bildirimleriyle paylaşır, renk taşmamalı).
 - Hata yoksa fragment **hiçbir şey basmaz** (boş satır bile değil).
 - Menübar UI'ı değişmez (global kalır).
-- **Tazelik:** fragment-only kurulumda `statusLine`'a `refreshInterval` (30 sn; alan birimi implementasyonda tek smoke ile teyit edilir) eklenir — hata, assistant cevabından saniyeler sonra geldiği için timer olmadan bir tur gecikmeli görünürdü. **Wrapper kurulumunda kullanıcının mevcut objesi aynen korunur, `refreshInterval` eklenmez/değiştirilmez** (kullanıcının kadansına dokunmayız); bu durumda "hata bir sonraki etkileşimde görünür / süresi dolan satır yeni event'e dek kalır" davranışı Bilinen Sınırlamalar'dadır.
+- **Tazelik:** fragment-only kurulumda `statusLine`'a `"refreshInterval": 30` (birim saniyedir — resmi doc: "re-runs your command every N seconds", min 1) eklenir — hata, assistant cevabından saniyeler sonra geldiği için timer olmadan bir tur gecikmeli görünürdü. **Wrapper kurulumunda kullanıcının mevcut objesi aynen korunur, `refreshInterval` eklenmez/değiştirilmez** (kullanıcının kadansına dokunmayız); bu durumda "hata bir sonraki etkileşimde görünür / süresi dolan satır yeni event'e dek kalır" davranışı Bilinen Sınırlamalar'dadır.
 
 ## Veri değişikliği: JSONL şemasına `session`
 
@@ -37,7 +37,7 @@ Claude Code input alanının altında (statusline) o oturumda yakalanan son İng
 `~/Library/Application Support/Blooper/bin/statusline-fragment.sh` (app, hook/checker gibi senkronlar; `bundle.sh` kopya listesine eklenir):
 
 1. **TTY guard (ilk satır):** `[ -t 0 ] && payload="" || payload=$(cat)` — terminalde elle çalıştıran kullanıcı EOF beklemez, global moda düşer.
-2. `session_id`: `printf '%s' "$payload" | plutil -extract session_id raw -o - - 2>/dev/null || session_id=""` (alan yokken plutil rc=1 + hata metni basar — rc kontrolü şart, hook'taki desenle aynı).
+2. `session_id`: `session_id=$(printf '%s' "$payload" | plutil -extract session_id raw -o - - 2>/dev/null) || session_id=""` — dikkat: alan yokken plutil hata metnini **stdout'a** (`-o -` hedefine) basar, `2>/dev/null` kozmetiktir; yük taşıyan parça **rc kontrolü + `|| session_id=""`** reset'idir (hata metni değişkende kalmasın).
 3. `mistakes.jsonl` yoksa/boşsa sessiz çıkar (exit 0, çıktı yok).
 4. **Tek osascript/JXA çağrısıyla** (ölçülmüş maliyet ~22ms): dosyanın **son 200 satırı** parse edilir (daha eskisi taranmaz — Bilinen Sınırlamalar'da), bozuk satır atlanır, `session_id` doluysa `session` eşleşen VE `ts` son 10 dk içindeki kayıtlar süzülür (`session_id` boşsa yalnız ts filtresi), son 3'ü ANSI'li formatta basılır, her satır `\033[0m` ile biter.
 5. Her hata yolu fail-open: exit 0 + boş çıktı.
@@ -54,7 +54,7 @@ App, kurulum anında üretir (`bin/blooper-statusline.sh`). **Orijinal komut ham
 # Orijinal statusline BLOOPER_ORIGINAL değişkenindedir; restore kaynağı config.json'dur (bu dosya değil).
 BLOOPER_ORIGINAL='<escaped-original-command>'
 FRAGMENT="$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh"
-payload=$(cat)
+[ -t 0 ] && payload="" || payload=$(cat)   # TTY guard: elle çalıştıran EOF beklemesin
 # Orijinal alt shell'de koşar: çok satır, ;, &&, # ve quoting tek hamlede güvenli.
 # Çıktı yakalanıp printf '%s\n' ile normalize edilir: orijinal sona newline basmazsa
 # fragment'ın ilk satırı ona yapışırdı ("her satır = bir row" newline'a dayanır).
@@ -72,14 +72,15 @@ exit 0
 
 `HookInstaller` ile aynı disiplin (settings backup, parse edilemeyene dokunmama, idempotency):
 
+- **"Bizim" sınıflandırması (kritik):** komut string'i, bizim ürettiğimiz komuta (fragment veya wrapper çağrısı) **trim sonrası birebir EŞİTSE** bizimdir. Yolu *içeren ama eşit olmayan* komut (kullanıcı fragment'ı kendi pipeline'ına gömmüş olabilir) **yabancıdır** — substring eşleşmesi KULLANILMAZ; aksi halde Remove, kullanıcının kendi zincirini siler/ezerdi.
 - **Kur:**
-  - `statusLine` yoksa → `{"type":"command","command":"\"$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh\"","refreshInterval":<30 sn>}` (boşluklu yol çift-tırnaklı `$HOME` — hook komutuyla aynı desen).
-  - Komut bizim wrapper/fragment yolunu içeriyorsa → marker sürümü aynıysa no-op, farklıysa wrapper yeniden üretilir.
-  - **Çift-sarma koruması (dosya-içi tarama):** mevcut komutun işaret ettiği script dosyası okunabiliyorsa içinde `BLOOPER-STATUSLINE-WRAPPER` aranır — bulunursa (yabancı araç bizim wrapper'ı sarmış/kopyalamış) kurulum reddedilir, kullanıcıya "statusline zaten Blooper içeriyor; önce elle çözün" hatası gösterilir. Settings string taraması yetmez.
+  - `statusLine` yoksa → `{"type":"command","command":"\"$HOME/Library/Application Support/Blooper/bin/statusline-fragment.sh\"","refreshInterval":30}` (boşluklu yol çift-tırnaklı `$HOME` — hook komutuyla aynı desen).
+  - Komut bizimse (birebir eşit) → wrapper durumunda marker sürümü aynıysa no-op, farklıysa wrapper yeniden üretilir; fragment durumunda no-op (fragment'ta sürüm kavramı yok).
+  - **Çift-sarma koruması (best-effort dosya-içi tarama):** komut string'inden hedef script dosyası çıkarılmaya çalışılır — baştaki interpreter token'ları (`bash`/`sh`/`zsh`) soyulur, tırnaklar çözülür, `$HOME`/`~` genişletilir; kalan ilk argüman mevcut bir dosyaysa okunup içinde `BLOOPER-STATUSLINE-WRAPPER` aranır. Bulunursa kurulum reddedilir + "statusline zaten Blooper içeriyor; önce elle çözün" hatası. Dosya çıkarılamıyorsa (ör. `bash -c '<inline>'`) tarama atlanır — birincil koruma yukarıdaki tam-eşleşme sınıflandırmasıdır, bu tarama ek katmandır.
   - Yabancıysa → orijinal `statusLine` **objesi bütün olarak** `config.json`'a `original_statusline` anahtarıyla kaydedilir + wrapper üretilir + `statusLine.command` wrapper yoluna çevrilir (objenin diğer anahtarları settings'te aynen korunur).
 - **Kaldır:**
-  - Komut fragment'a işaret ediyorsa → `statusLine` anahtarı silinir (kurulum öncesi "yok" durumu).
-  - Komut wrapper'a işaret ediyorsa → `original_statusline` objesi settings'e geri yazılır, config'ten silinir, wrapper dosyası silinir.
+  - Komut bizim fragment komutuna eşitse → `statusLine` anahtarı silinir (kurulum öncesi "yok" durumu).
+  - Komut bizim wrapper komutuna eşitse → `original_statusline` objesi settings'e geri yazılır, config'ten silinir, wrapper dosyası silinir. **`original_statusline` config'te yoksa/bozuksa (elle silinmiş olabilir):** `statusLine` anahtarı silinir (fragment-dalı davranışına düşülür) + wrapper dosyası silinir + kullanıcıya "orijinal statusline kaydı bulunamadı; gerekirse `settings.json.blooper-backup`'tan geri alabilirsin" mesajı gösterilir.
   - Yabancıysa → settings'e **dokunulmaz**; ama `original_statusline` config'te duruyorsa kullanıcıya **açıklayıcı mesaj** gösterilir ("statusline başka bir araçça değiştirilmiş; orijinalin `config.json`'da saklı, Blooper parçalarını elle kaldırabilirsin") + wrapper dosyasını silme teklif edilir. Sessiz no-op YOK.
   - Remove idempotent'tir (ikinci Remove hata üretmez).
 - **config.json disiplini:** güncelleme daima **read-modify-write**'tır — `model`, `notifications` ve bilinmeyen anahtarlar korunur; parse edilemeyen config.json'a dokunulmaz + hata gösterilir (settings.json disiplininin eşleniği).
@@ -96,6 +97,7 @@ MenuView'a hook toggle'ının yanına: **"Install statusline" / "Remove statusli
 - Eski (session'sız) satırlar statusline'da görünmez.
 - 10 dk / 3 satır sabittir (config'e bağlanmaz — YAGNI).
 - Çok satırlı + ANSI'li statusline'lar, düz tek satıra göre render sorunlarına daha yatkındır (resmi doc uyarısı).
+- Wrapper'daki `out=$(...)` yakalaması, orijinal çıktının **sondaki boş satırlarını** düşürür (içteki boş satırlar korunur) — boş satırla yükseklik ayarlayan statusline'larda görünür fark olabilir.
 - Fragment-only kurulum Claude Code'un varsayılan footer ipuçlarını (kısayol hatırlatmaları) gizler — README/onboarding notu.
 - Proje-seviyesi `.claude/settings.json` statusline tanımlıyorsa o projede Blooper statusline'ı görünmez (user-level ezilir) — README notu.
 
@@ -103,12 +105,12 @@ MenuView'a hook toggle'ının yanına: **"Install statusline" / "Remove statusli
 
 - **Script (run.sh'a eklenir, stub'lı, gerçek üretim yolu):**
   - fragment: eşleşen oturum + taze ts → basar; başka oturum → basmaz; eski ts → basmaz; 5 kayıt → son 3; dosya yok/boş/bozuk satır → boş çıktı exit 0; **payload var ama `session_id` alanı yok → global davranış**; payload'sız (kapalı stdin) → global; her çıktı satırı `\033[0m` ile bitiyor; **>200 satırlık dosyada tail-dışı kayıt basılmıyor** (belgelenmiş sınır).
-  - wrapper: payload'ı echo'layan sahte orijinal → önce orijinal satırı sonra fragment satırları; **orijinal `printf`-tarzı newline'sız** → satırlar yapışmıyor; **orijinal `;` ve `&&` içeriyor** → payload tüm parçalara ulaşıyor; orijinal exit 1 → fragment yine basılır, wrapper exit 0; orijinal çok satırlı string → wrapper geçerli üretiliyor ve çalışıyor.
+  - wrapper: payload'ı echo'layan sahte orijinal → önce orijinal satırı sonra fragment satırları; **orijinal `printf`-tarzı newline'sız** → satırlar yapışmıyor; **orijinal `;`/`&&` içeriyor** → komut grubu payload pipe'ını **native semantikle paylaşıyor** (her parça payload'ın tamamını GÖREMEZ — stdin tek'tir, parçalar sırayla tüketir; bu `bash -c` sarmasının doğru davranışıdır, "hepsine tam kopya" assert'i yazılamaz); orijinal exit 1 → fragment yine basılır, wrapper exit 0; orijinal çok satırlı ve `'` içeren string → wrapper geçerli üretiliyor ve çalışıyor.
   - hook: `payload=$(cat)` sonrası **prompt tam ulaşıyor** (200KB testi session'lı payload varyantıyla); `session_id` JSONL satırına yazılıyor; payload'da `session_id` yokken alansız satır + prompt yine kontrol ediliyor.
 - **Swift:**
   - `Mistake`: session'lı ve session'sız (eski format) satırlar parse edilir.
-  - `StatuslineInstaller`: yok→fragment+refreshInterval kur; yabancı→wrapper + orijinal obje (**`padding`, `refreshInterval`, `hideVimModeIndicator` ve bilinmeyen rastgele anahtar dahil**) config'e kaydedilir ve kaldırınca **birebir** geri gelir; bizimki→idempotent; marker sürüm farkı→yeniden üretim; Remove→Remove idempotent; Install→Install→Remove sırası; parse edilemeyen settings/config→throw + dosyaya dokunulmaz; config RMW'de `model`/`notifications` korunur; çift-sarma dosya-içi taramayla reddedilir.
-- Gerçek-ortam smoke: ponytail statusline'ı sarılır → ponytail çıktısı + altında hata satırları; Remove → ponytail objesi birebir geri; `refreshInterval` birimi fragment-only kurulumda teyit edilir.
+  - `StatuslineInstaller`: yok→fragment+refreshInterval kur; yabancı→wrapper + orijinal obje (**`padding`, `refreshInterval`, `hideVimModeIndicator` ve bilinmeyen rastgele anahtar dahil**) config'e kaydedilir ve kaldırınca **birebir** geri gelir; bizimki→idempotent; marker sürüm farkı→yeniden üretim; Remove→Remove idempotent; Install→Install→Remove sırası; **fragment yolunu içeren-ama-eşit-olmayan komut yabancı sayılır** (Remove dokunmaz, mesaj gösterir); **wrapper'a eşit komut + config'te `original_statusline` yok → fallback (anahtar silinir + wrapper silinir + mesaj)**; parse edilemeyen settings/config→throw + dosyaya dokunulmaz; config RMW'de `model`/`notifications` korunur; çift-sarma dosya-içi taramayla reddedilir.
+- Gerçek-ortam smoke: ponytail statusline'ı sarılır → ponytail çıktısı + altında hata satırları; Remove → ponytail objesi birebir geri.
 
 ## Sürüm / dağıtım
 

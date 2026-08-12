@@ -139,7 +139,7 @@ Menüden tetiklenir; `mistakes.jsonl`'dan tek tablo üretir (tarih, hata, düzel
 
 ## Dağıtım
 
-- `scripts/bundle.sh`: `swift build -c release --arch arm64 --arch x86_64` (tek komutta universal binary) → `Blooper.app` (Info.plist, script'ler `Resources/`e; app ikonu v1'de jenerik, sonradan eklenir) → **sabit identifier'la ad-hoc codesign** (`codesign -s - --identifier com.barisatalay.blooper`) — denenecek bir hafifletme, garanti değil: ad-hoc imzada TCC kimliği build'den build'e değişen CDHash'e bağlıdır, identifier tek başına stabil kimlik kurmaz. Birincil önlem README'deki "güncellemede bildirim iznini yeniden vermek gerekebilir" notudur.
+- `scripts/bundle.sh`: `swift build -c release --arch arm64 --arch x86_64` (tek komutta universal binary) → `Blooper.app` (Info.plist, AppIcon.icns + script'ler `Resources/`e; ikon `scripts/make-icon.swift` ile üretilir) → **sabit identifier'la ad-hoc codesign** (`codesign -s - --identifier com.barisatalay.blooper`) — denenecek bir hafifletme, garanti değil: ad-hoc imzada TCC kimliği build'den build'e değişen CDHash'e bağlıdır, identifier tek başına stabil kimlik kurmaz. Birincil önlem README'deki "güncellemede bildirim iznini yeniden vermek gerekebilir" notudur.
 - `scripts/release.sh`: `bundle.sh` + `hdiutil` ile `.dmg` + `gh release create`.
 - **v1 imzasız (Developer ID yok):** README'de Gatekeeper adımları **sürüme göre**: macOS 13/14 → sağ tık → Aç; macOS 15+ → Sistem Ayarları → Gizlilik ve Güvenlik → "Yine de Aç" (yalnız ilk açılışta). Alternatif tek satır: `xattr -d com.apple.quarantine /Applications/Blooper.app`. Developer ID edinilirse notarization `release.sh`'a eklenir.
 

@@ -14,6 +14,7 @@ setup_env() {
     mkdir -p "$BLOOPER_SUPPORT_DIR/bin"
     cp "$ROOT/Resources/scripts/hook.sh" "$BLOOPER_SUPPORT_DIR/bin/"
     cp "$ROOT/Resources/scripts/checker.sh" "$BLOOPER_SUPPORT_DIR/bin/" 2>/dev/null || true
+    cp "$ROOT/Resources/scripts/statusline-fragment.sh" "$BLOOPER_SUPPORT_DIR/bin/" 2>/dev/null || true
     chmod +x "$BLOOPER_SUPPORT_DIR/bin/"*.sh
     export STUB_LOG="$WORK/stub.log"; : > "$STUB_LOG"
     export PATH="$ROOT/tests/scripts/stubs:$PATH"
@@ -222,6 +223,100 @@ test_hook_missing_session_still_checks() {
     pass "hook tolerates missing session_id"
 }
 
+sl_payload() { printf '{"session_id":%s,"model":{"id":"m"}}' "$1"; }
+
+write_mistake() { # $1=epoch-offset-sn $2=session(veya boş) $3=wrong
+    ts=$(date -u -v-"$1"S +%Y-%m-%dT%H:%M:%SZ)
+    if [ -n "$2" ]; then
+        printf '{"ts":"%s","wrong":"%s","right":"fixed","rule":"r","session":"%s"}\n' "$ts" "$3" "$2"
+    else
+        printf '{"ts":"%s","wrong":"%s","right":"fixed","rule":"r"}\n' "$ts" "$3"
+    fi >> "$BLOOPER_SUPPORT_DIR/mistakes.jsonl"
+}
+
+FRAG() { "$BLOOPER_SUPPORT_DIR/bin/statusline-fragment.sh"; }
+
+test_fragment_matching_session_fresh() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    out=$(sl_payload '"s1"' | FRAG)
+    case "$out" in *"I am agree"*) pass "fragment shows matching fresh" ;; *) fail "fragment boş: [$out]" ;; esac
+}
+
+test_fragment_other_session_hidden() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    out=$(sl_payload '"s2"' | FRAG)
+    [ -z "$out" ] || { fail "başka oturum sızdı: $out"; return; }
+    pass "fragment hides other session"
+}
+
+test_fragment_stale_hidden() {
+    setup_env
+    write_mistake 700 "s1" "old mistake"
+    out=$(sl_payload '"s1"' | FRAG)
+    [ -z "$out" ] || { fail "bayat kayıt sızdı: $out"; return; }
+    pass "fragment hides stale (>10min)"
+}
+
+test_fragment_caps_at_three() {
+    setup_env
+    for i in 1 2 3 4 5; do write_mistake 60 "s1" "wrong$i"; done
+    out=$(sl_payload '"s1"' | FRAG)
+    n=$(printf '%s\n' "$out" | grep -c 'fixed')
+    [ "$n" -eq 3 ] || { fail "satır sayısı $n (3 bekleniyordu)"; return; }
+    case "$out" in *wrong5*) : ;; *) fail "en yeni kayıt yok"; return ;; esac
+    case "$out" in *wrong1*|*wrong2*) fail "eski kayıtlar elenmedi"; return ;; esac
+    pass "fragment caps at last 3"
+}
+
+test_fragment_no_session_field_global() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    out=$(printf '{"model":{"id":"m"}}' | FRAG)     # payload var, session_id alanı yok
+    case "$out" in *"I am agree"*) pass "fragment global fallback (no session_id)" ;; *) fail "global düşüş çalışmadı" ;; esac
+}
+
+test_fragment_closed_stdin_global() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"
+    out=$(FRAG </dev/null)                           # payload hiç yok (kapalı stdin) → global mod
+    case "$out" in *"I am agree"*) pass "fragment global fallback (closed stdin)" ;; *) fail "kapalı-stdin düşüşü çalışmadı" ;; esac
+}
+
+test_fragment_empty_and_garbage() {
+    setup_env
+    out=$(sl_payload '"s1"' | FRAG); [ -z "$out" ] || { fail "boş dosyada çıktı"; return; }
+    printf 'garbage line\n{"ts":"broken"}\n' >> "$BLOOPER_SUPPORT_DIR/mistakes.jsonl"
+    write_mistake 60 "s1" "I am agree"
+    out=$(sl_payload '"s1"' | FRAG)
+    case "$out" in *"I am agree"*) pass "fragment skips garbage lines" ;; *) fail "bozuk satır taramayı kırdı" ;; esac
+}
+
+test_fragment_ansi_reset_per_line() {
+    setup_env
+    write_mistake 60 "s1" "I am agree"; write_mistake 30 "s1" "teh"
+    # Pipeline-subshell tuzağı: while'ı pipe'a bağlarsak fail() sayacı subshell'de kalır,
+    # suite yanlışı yeşil raporlar. Çıktı önce değişkene alınır, here-string ile döngülenir.
+    out=$(sl_payload '"s1"' | FRAG)
+    bad=0
+    while IFS= read -r line; do
+        case "$line" in *$'\033[0m') : ;; *) bad=1 ;; esac
+    done <<< "$out"
+    [ "$bad" -eq 0 ] || { fail "satır(lar) reset ile bitmiyor"; return; }
+    pass "fragment lines end with ANSI reset"
+}
+
+test_fragment_tail_200_limit() {
+    setup_env
+    write_mistake 60 "s1" "buried"                 # eşleşen kayıt en başta
+    i=0; ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    while [ $i -lt 210 ]; do printf '{"ts":"%s","wrong":"pad","right":"p","rule":"r","session":"zzz"}\n' "$ts"; i=$((i+1)); done >> "$BLOOPER_SUPPORT_DIR/mistakes.jsonl"
+    out=$(sl_payload '"s1"' | FRAG)
+    [ -z "$out" ] || { fail "tail-200 sınırı delindi"; return; }
+    pass "fragment scans only last 200 lines (documented limit)"
+}
+
 test_hook_recursion_guard
 test_hook_large_prompt
 test_hook_returns_fast_with_slow_checker
@@ -241,6 +336,15 @@ test_checker_session_in_jsonl
 test_checker_no_session_no_field
 test_hook_passes_session_to_checker
 test_hook_missing_session_still_checks
+test_fragment_matching_session_fresh
+test_fragment_other_session_hidden
+test_fragment_stale_hidden
+test_fragment_caps_at_three
+test_fragment_no_session_field_global
+test_fragment_closed_stdin_global
+test_fragment_empty_and_garbage
+test_fragment_ansi_reset_per_line
+test_fragment_tail_200_limit
 
 printf '\n%d failure(s)\n' "$FAILS"
 exit "$FAILS"
